@@ -107,11 +107,12 @@ namespace mdr
         SendCommandACK(NcAsmGetParam, NcAsmGetParam{});
         co_await Await(AWAIT_V1_NCASM);
 
-        // VPT initial state
+        // VPT initial state — fire-and-forget: some devices (e.g. WH-1000XM4) do not
+        // ACK this command. SendCommandImpl sends without waiting for an ACK; the
+        // VPT_RET_PARAM response will be handled by HandleCommandV1 if it arrives.
         VptGetParam vptReq;
         vptReq.inquiredType = VptInquiredType::VPT;
-        SendCommandACK(VptGetParam, vptReq);
-        // VPT response is fire-and-forget (NTFY-style) — no dedicated awaiter needed
+        SendCommandImpl<VptGetParam>(vptReq);
 
         co_return MDR_HEADPHONES_TASK_INIT_OK;
     }
