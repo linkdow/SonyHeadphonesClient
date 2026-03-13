@@ -123,8 +123,10 @@ namespace mdr
 
     MDRTask MDRHeadphones::RequestSyncV1()
     {
-        SendCommandACK(PowerGetStatus, PowerGetStatus{});
-        co_await Await(AWAIT_V1_BATTERY);
+        // WH-1000XM4 does not ACK PowerGetStatus; battery is pushed via POWER_NTFY_STATUS.
+        // Send fire-and-forget and let HandleCommandV1 update mV1Battery when the
+        // notification arrives.
+        SendCommandImpl<PowerGetStatus>(PowerGetStatus{});
 
         co_return MDR_HEADPHONES_TASK_SYNC_OK;
     }
