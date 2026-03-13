@@ -56,6 +56,8 @@
 // Service UUIDs
 // XM5s and newer
 #define MDR_SERVICE_UUID_XM5 "956C7B26-D49A-4BA8-B03F-B17D393CB6E2"
+// Legacy V1 devices: WH-1000XM4, WH-1000XM3, WF-1000XM4, etc.
+#define MDR_SERVICE_UUID_XM4 "96CC203E-5068-46AD-B32D-E316F5E069BA"
 #ifdef __cplusplus
 extern "C" {
 #endif

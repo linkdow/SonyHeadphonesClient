@@ -56,6 +56,19 @@ int mdrHeadphonesRequestSyncV2(MDRHeadphones*);
  */
 int mdrHeadphonesRequestCommitV2(MDRHeadphones*);
 /**
+ * @brief Switch to V1 protocol mode (legacy devices: WH-1000XM4, WH-1000XM3, etc.)
+ * @note  Must be called before @ref mdrHeadphonesRequestInitV1.
+ * @param isV1 Non-zero to enable V1 mode, zero to revert to V2.
+ */
+int mdrHeadphonesSetProtocolV1(MDRHeadphones*, int isV1);
+/**
+ * @brief V1 equivalents of the V2 Init/Sync/Commit functions.
+ * @note  Use @ref MDR_SERVICE_UUID_XM4 when calling @ref mdrConnectionConnect for V1 devices.
+ */
+int mdrHeadphonesRequestInitV1(MDRHeadphones*);
+int mdrHeadphonesRequestSyncV1(MDRHeadphones*);
+int mdrHeadphonesRequestCommitV1(MDRHeadphones*);
+/**
  * @brief Checks if there's any property to be set.
  * @return @ref MDR_RESULT_OK if not, @ref MDR_RESULT_INPROGRESS if there's anything that
  *         should be committed with @ref mdrHeadphonesRequestCommit

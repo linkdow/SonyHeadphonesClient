@@ -62,6 +62,7 @@ namespace mdr
         dirty |= mMultipointDeviceMac.dirty() || mSafeListeningPreviewMode.dirty();
         dirty |= mPairedDeviceConnectMac.dirty() || mPairedDeviceDisconnectMac.dirty() || mPairedDeviceUnpairMac.
             dirty();
+        dirty |= mV1NcAsmMode.dirty() || mV1VptPreset.dirty() || mV1SoundPosition.dirty();
         return dirty;
     }
 
@@ -114,6 +115,9 @@ namespace mdr
             break;
         case DATA_MDR:
             SendACK(seq);
+            // V1 and V2T1 both use DATA_MDR. The flag is set before RequestInitV1/V2 is invoked.
+            if (mIsV1Protocol)
+                return HandleCommandV1(command, seq);
             return HandleCommandV2T1(command, seq);
         case DATA_MDR_NO2:
             SendACK(seq);
@@ -339,6 +343,31 @@ int mdrHeadphonesRequestCommitV2(MDRHeadphones* p)
 {
     auto h = reinterpret_cast<mdr::MDRHeadphones*>(p);
     return h->Invoke(h->RequestCommitV2());
+}
+
+int mdrHeadphonesSetProtocolV1(MDRHeadphones* p, int isV1)
+{
+    auto h = reinterpret_cast<mdr::MDRHeadphones*>(p);
+    h->mIsV1Protocol = (isV1 != 0);
+    return MDR_RESULT_OK;
+}
+
+int mdrHeadphonesRequestInitV1(MDRHeadphones* p)
+{
+    auto h = reinterpret_cast<mdr::MDRHeadphones*>(p);
+    return h->Invoke(h->RequestInitV1());
+}
+
+int mdrHeadphonesRequestSyncV1(MDRHeadphones* p)
+{
+    auto h = reinterpret_cast<mdr::MDRHeadphones*>(p);
+    return h->Invoke(h->RequestSyncV1());
+}
+
+int mdrHeadphonesRequestCommitV1(MDRHeadphones* p)
+{
+    auto h = reinterpret_cast<mdr::MDRHeadphones*>(p);
+    return h->Invoke(h->RequestCommitV1());
 }
 
 int mdrHeadphonesIsDirty(MDRHeadphones* p)

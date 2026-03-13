@@ -1,5 +1,6 @@
 #pragma once
 #include "Command.hpp"
+#include "ProtocolV1.hpp"
 #include "ProtocolV2T1.hpp"
 #include "ProtocolV2T2.hpp"
 #include <mdr-c/Headphones.h>
@@ -119,7 +120,10 @@ namespace mdr
             AWAIT_ACK = 0,
             AWAIT_PROTOCOL_INFO = 1,
             AWAIT_SUPPORT_FUNCTION = 2,
-            AWAIT_NUM_TYPES = 3
+            // V1-specific awaiters
+            AWAIT_V1_BATTERY = 3,
+            AWAIT_V1_NCASM   = 4,
+            AWAIT_NUM_TYPES  = 5
         };
 
         static constexpr int kAwaitAckRetries = 5;
@@ -359,6 +363,19 @@ namespace mdr
         MDRProperty<String> mPairedDeviceDisconnectMac, mPairedDeviceConnectMac, mPairedDeviceUnpairMac;
 
         MDRProperty<bool> mSafeListeningPreviewMode;
+
+        // --- V1 Protocol ---
+        bool mIsV1Protocol{false};
+
+        struct V1BatteryState
+        {
+            UInt8 level{};
+            bool  charging{};
+        } mV1Battery;
+
+        MDRProperty<v1::NcAsmInquiredType> mV1NcAsmMode;
+        MDRProperty<v1::VptPresetId>        mV1VptPreset;
+        MDRProperty<v1::SoundPositionPreset> mV1SoundPosition;
 #pragma endregion
 
 #pragma region Tasks
@@ -380,6 +397,11 @@ namespace mdr
          * @return @ref MDR_HEADPHONES_TASK_COMMIT_OK on completion (returned in @ref PollEvents)
          */
         MDRTask RequestCommitV2();
+
+        /** V1 equivalents — for legacy devices (WH-1000XM4, XM3, etc.) */
+        MDRTask RequestInitV1();
+        MDRTask RequestSyncV1();
+        MDRTask RequestCommitV1();
 #pragma endregion
 
     private:
@@ -440,6 +462,7 @@ namespace mdr
         int Handle(Span<const UInt8> command, MDRDataType type, MDRCommandSeqNumber seq);
         int HandleCommandV2T1(Span<const UInt8> cmd, MDRCommandSeqNumber seq);
         int HandleCommandV2T2(Span<const UInt8> cmd, MDRCommandSeqNumber seq);
+        int HandleCommandV1(Span<const UInt8> cmd, MDRCommandSeqNumber seq);
         void HandleAck(MDRCommandSeqNumber seq);
     };
 }

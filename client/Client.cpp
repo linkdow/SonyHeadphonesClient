@@ -13,6 +13,7 @@ using namespace mdr;
 
 mdr::MDRHeadphones gDevice;
 String gBugcheckMessage;
+static bool gIsV1Device = false;
 
 #pragma region Enum Names
 const char* FormatEnum(v2::t1::AudioCodec codec)
@@ -498,7 +499,7 @@ void DrawDeviceDiscovery()
     {
         static MDRDeviceInfo* pDeviceInfo = nullptr;
         static int nDeviceInfo = 0;
-        Span devices{pDeviceInfo, pDeviceInfo + nDeviceInfo};
+        Span<MDRDeviceInfo> devices{pDeviceInfo, pDeviceInfo + nDeviceInfo};
         ImGui::PushFont(nullptr, ImGui::GetContentRegionAvail().x * 0.05f);
         ImTextCentered("SonyHeadphonesClient");
         ImGui::PopFont();
@@ -514,11 +515,12 @@ void DrawDeviceDiscovery()
         {
             ImGui::TextWrapped(PSI_WARNING_SIGN " No devices available. Make sure your Bluetooth radio is turned on, and a compatible device is connected.");
         }
+        ImGui::Checkbox("Legacy device (WH-1000XM4/XM3/XM4 TWS)", &gIsV1Device);
         ImGui::BeginDisabled(devices.empty());
         if (ImModalButton(PSI_LINK " Connect", 0, 2))
         {
-            // XXX: Other service UUIDs?
-            int res = mdrConnectionConnect(conn, devices[deviceIndex].szDeviceMacAddress, MDR_SERVICE_UUID_XM5);
+            const char* serviceUuid = gIsV1Device ? MDR_SERVICE_UUID_XM4 : MDR_SERVICE_UUID_XM5;
+            int res = mdrConnectionConnect(conn, devices[deviceIndex].szDeviceMacAddress, serviceUuid);
             if (res != MDR_RESULT_OK && res != MDR_RESULT_INPROGRESS)
                 connState = CONN_STATE_DISCONNECTED;
             else
@@ -546,9 +548,13 @@ void DrawDeviceConnecting()
     case MDR_RESULT_OK:
         connState = CONN_STATE_CONNECTED;
         gDevice = mdr::MDRHeadphones(conn);
+        gDevice.mIsV1Protocol = gIsV1Device;
         // Do an init - this should always be possible when @ref MDRHeadphones
         // is first created.
-        MDR_CHECK(gDevice.Invoke(gDevice.RequestInitV2()) == MDR_RESULT_OK);
+        if (gIsV1Device)
+            { MDR_CHECK(gDevice.Invoke(gDevice.RequestInitV1()) == MDR_RESULT_OK) }
+        else
+            { MDR_CHECK(gDevice.Invoke(gDevice.RequestInitV2()) == MDR_RESULT_OK) }
         return;
     case MDR_RESULT_ERROR_TIMEOUT:
     case MDR_RESULT_INPROGRESS:
@@ -623,7 +629,7 @@ void DrawDeviceControlsHeader()
         {
             *(badgeLast++) = {FormatEnum(gDevice.mUpscalingType), ~0u, ~0u};
         }
-        Span badges{badgeFirst, badgeLast};
+        Span<Badge> badges{badgeFirst, badgeLast};
         // Right-align and draw them
         // XXX: This is surprisingly painful to do.
         ImVec2 padding = style.FramePadding;
@@ -666,6 +672,15 @@ void DrawDeviceControlsHeader()
                 v2::MessageMdrV2FunctionType_Table1::CRADLE_BATTERY_LEVEL_WITH_THRESHOLD);
             if (ImGui::BeginTable("##Battery", 2, ImGuiTableFlags_SizingStretchProp))
             {
+                if (gDevice.mIsV1Protocol)
+                {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::Text("Battery: %d%%", (int)gDevice.mV1Battery.level);
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::ProgressBar(gDevice.mV1Battery.level / 100.0f, {-1, 0},
+                                       gDevice.mV1Battery.charging ? "Charging" : "Discharging");
+                }
                 if (supportSingle && !supportLR && gDevice.mBatteryL.threshold)
                 {
                     ImGui::TableNextRow();
@@ -755,6 +770,65 @@ void DrawDeviceControlsPlayback()
 
 void DrawDeviceControlsSound()
 {
+    /* V1 protocol — distinct NC/ASM + VPT UI */
+    if (gDevice.mIsV1Protocol)
+    {
+        using enum v1::NcAsmInquiredType;
+        if (ImGui::TreeNodeEx("Ambient Sound", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            bool ncSelected  = gDevice.mNcAsmEnabled.desired
+                               && gDevice.mV1NcAsmMode.desired == NOISE_CANCELLING;
+            bool asmSelected = gDevice.mNcAsmEnabled.desired
+                               && (gDevice.mV1NcAsmMode.desired == AMBIENT_SOUND
+                                   || gDevice.mV1NcAsmMode.desired == NOISE_CANCELLING_AND_AMBIENT_SOUND);
+            if (ImGui::RadioButton("Noise Cancelling", ncSelected))
+            {
+                gDevice.mNcAsmEnabled.desired = true;
+                gDevice.mV1NcAsmMode.desired  = NOISE_CANCELLING;
+            }
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Ambient Sound", asmSelected))
+            {
+                gDevice.mNcAsmEnabled.desired = true;
+                gDevice.mV1NcAsmMode.desired  = AMBIENT_SOUND;
+                if (gDevice.mNcAsmAmbientLevel.desired == 0)
+                    gDevice.mNcAsmAmbientLevel.desired = 1;
+            }
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Off", !gDevice.mNcAsmEnabled.desired))
+                gDevice.mNcAsmEnabled.desired = false;
+            ImGui::SeparatorText("Ambient Strength");
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+            ImGui::SliderInt("##AmbStrength", &gDevice.mNcAsmAmbientLevel.desired, 0, 19);
+            ImGui::Checkbox("Voice Passthrough", &gDevice.mNcAsmFocusOnVoice.desired);
+            ImGui::TreePop();
+        }
+        if (ImGui::TreeNodeEx("Surround Sound (VPT)", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            using enum v1::VptPresetId;
+            constexpr std::pair<v1::VptPresetId, const char*> kVptPresets[] = {
+                { OFF,              "Off"              },
+                { OUTDOOR_FESTIVAL, "Outdoor Festival" },
+                { ARENA,            "Arena"            },
+                { CONCERT_HALL,     "Concert Hall"     },
+                { CLUB,             "Club"             },
+            };
+            const char* currentPreset = "Unknown";
+            for (auto const& [k, v] : kVptPresets)
+                if (k == gDevice.mV1VptPreset.desired)
+                    currentPreset = v;
+            if (ImGui::BeginCombo("Preset##VPT", currentPreset))
+            {
+                for (auto const& [k, v] : kVptPresets)
+                    if (ImGui::Selectable(v, k == gDevice.mV1VptPreset.desired))
+                        gDevice.mV1VptPreset.desired = k;
+                ImGui::EndCombo();
+            }
+            ImGui::TreePop();
+        }
+        return;
+    }
+
     using F1 = v2::MessageMdrV2FunctionType_Table1;
     constexpr auto kSupports = [](auto x) { return gDevice.mSupport.contains(x); };
     bool supportNC = kSupports(F1::NOISE_CANCELLING_ONOFF)
@@ -1286,12 +1360,20 @@ void DrawDeviceControls()
         case MDR_HEADPHONES_TASK_INIT_OK:
             // Request for a stat update ASAP
             // User may request for this themselves - we don't do periodic checks this time
-            MDR_CHECK(gDevice.Invoke(gDevice.RequestSyncV2()) == MDR_RESULT_OK);
+            if (gIsV1Device)
+                { MDR_CHECK(gDevice.Invoke(gDevice.RequestSyncV1()) == MDR_RESULT_OK) }
+            else
+                { MDR_CHECK(gDevice.Invoke(gDevice.RequestSyncV2()) == MDR_RESULT_OK) }
             return;
         case MDR_HEADPHONES_IDLE:
             // Commit changes if needed to
             if (gDevice.IsDirty())
-                MDR_CHECK(gDevice.Invoke(gDevice.RequestCommitV2()) == MDR_RESULT_OK);
+            {
+                if (gIsV1Device)
+                    { MDR_CHECK(gDevice.Invoke(gDevice.RequestCommitV1()) == MDR_RESULT_OK) }
+                else
+                    { MDR_CHECK(gDevice.Invoke(gDevice.RequestCommitV2()) == MDR_RESULT_OK) }
+            }
             return;
         case MDR_HEADPHONES_ERROR:
             // Irrecoverable. Disconnect now.
